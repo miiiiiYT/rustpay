@@ -65,6 +65,7 @@ impl IBAN {
         self.iter().filter(|c| c.is_ascii()).collect::<String>()
     }
 
+    /// Verifies the validity of the IBAN according to its standard
     pub fn is_valid(&self) -> bool {
         let iban = self.to_string();
 
@@ -108,6 +109,29 @@ impl IBAN {
         }
 
         remainder == 1
+    }
+
+    /// Returns `self` as a byte slice, without sanity checks, albeit faster.
+    /// # Safety
+    /// This function does not check for every char being one byte long.
+    /// Ensure that every char is an ASCII character.
+    /// 
+    /// You probably want to use `IBAN::as_bytes()`.
+    pub fn as_bytes_unchecked(&self) -> Vec<u8> {
+        self.iter().map(|c| *c as u8).collect::<Vec<u8>>()
+    }
+}
+
+impl ToBytes for IBAN {
+    /// Returns `self` as a byte slice.
+    /// # Panics
+    /// When one or more chars are non-ascii.
+    fn as_bytes(&self) -> Vec<u8> {
+        for c in **self {
+            assert!(c.is_ascii());
+        }
+
+        self.iter().map(|c| *c as u8).collect::<Vec<u8>>()
     }
 }
 
@@ -180,8 +204,11 @@ mod tests {
     }
 
     #[test]
-    fn length() {
-        assert!(true)
+    fn length() -> Result<(), Error> {
+        let iban = IBAN::try_from("DE91500105177266427249")?;
+
+        assert_eq!(iban.len(), 22);
+        Ok(())
     }
 
     #[test]
@@ -256,5 +283,21 @@ mod tests {
         ];
 
         assert_eq!(results, expected_results)
+    }
+
+    #[test]
+    fn as_bytes() -> Result<(), Error> {
+        let iban = IBAN::new();
+        assert_eq!(iban.as_bytes(), &[0;34]);
+
+        let iban_filled = IBAN::try_from("GB61BARC20031895173674")?;
+        let expected = vec![
+            0x47,0x42,0x36,0x31,0x42,0x41,0x52,0x43,0x32,0x30,0x30,0x33,0x31,0x38,0x39,0x35,0x31,0x37,0x33,0x36,0x37,0x34,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        ];
+        let bytes = iban_filled.as_bytes();
+        assert_eq!(bytes, expected);
+
+        Ok(())
     }
 }

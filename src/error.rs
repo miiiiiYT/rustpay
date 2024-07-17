@@ -4,6 +4,8 @@ use std::fmt::Display;
 pub enum Error {
     NotAnIBAN,
     WrongIBANSize,
+    NoPrivateKey,
+    DevError,
 }
 
 impl Display for Error {
@@ -17,6 +19,8 @@ impl Error {
         match self {
             Self::NotAnIBAN => "the provided string was unable to be converted into an iban",
             Self::WrongIBANSize => "the provided string is too long or too short to be an iban",
+            Self::NoPrivateKey => "the entity did not contain a private (signing) key",
+            Self::DevError => "error for testing",
         }
     }
 }

@@ -3,8 +3,10 @@ mod countrycodes;
 use std::ops::{Deref, DerefMut};
 
 use countrycodes::CountryCode;
+use serde::{Deserialize, Serialize};
 
 use crate::Error;
+pub use crate::traits::ToBytes;
 
 /// IBAN length by country code
 const IBAN_LENGTHS: &[(&str, usize)] = &[
@@ -193,6 +195,75 @@ impl TryFrom<&str> for IBAN {
     }
 }
 
+impl TryFrom<Vec<u8>> for IBAN {
+    type Error = crate::Error;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        if value.len() > 34 {
+            return Err(Error::WrongIBANSize);
+        }
+
+        let mut iban = IBAN::new();
+        let input = value.iter().map(|b| *b as char).collect::<Vec<char>>();
+        for i in 0..input.len() {
+            // cant be none since the range is known
+            let ch = input.get(i).unwrap();
+            if !ch.is_ascii() {
+                return Err(Error::NotAnIBAN);
+            }
+            iban[i] = *ch;
+        }
+
+        Ok(iban)
+    }
+}
+
+impl From<[char; 34]> for IBAN {
+    fn from(value: [char; 34]) -> Self {
+        IBAN(value)
+    }
+}
+
+impl Serialize for IBAN {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        serializer.serialize_bytes(&self.as_bytes())
+    }
+}
+
+impl<'de> Deserialize<'de> for IBAN {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        struct IBANVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for IBANVisitor {
+            type Value = IBAN;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "an array of 34 characters")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut arr = ['\0'; 34];
+                for i in 0..34 {
+                    arr[i] = seq.next_element()?
+                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                }
+                Ok(IBAN(arr))
+            }
+        }
+
+        deserializer.deserialize_seq(IBANVisitor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +368,38 @@ mod tests {
         ];
         let bytes = iban_filled.as_bytes();
         assert_eq!(bytes, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn serialization() -> Result<(), Error>{
+        let iban = IBAN::try_from("GB61BARC20031895173674")?;
+        let serialized = rmp_serde::to_vec(&iban).map_err(|_| Error::DevError)?;
+
+        let expected: Vec<u8> = vec![
+            0xc4, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        assert_eq!(expected, serialized);
+
+        Ok(())
+    }
+
+    #[test]
+    fn deserialization() -> Result<(), Error> {
+        let serialized = vec![
+            0xc4, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        let deserialized: Vec<u8> = rmp_serde::from_slice(&serialized).map_err(|_| Error::DevError)?;
+        let deserialized_iban = IBAN::try_from(deserialized)?;
+
+        let expected = IBAN::try_from("GB61BARC20031895173674")?;
+
+        assert_eq!(expected, deserialized_iban);
 
         Ok(())
     }

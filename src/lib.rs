@@ -8,7 +8,7 @@ pub mod transaction;
 pub mod user;
 mod error;
 mod iban;
-mod traits;
+pub mod traits;
 
 pub use error::Error;
 pub use iban::IBAN;

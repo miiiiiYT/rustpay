@@ -157,7 +157,8 @@ impl Serialize for IBAN {
     where
         S: serde::Serializer
     {
-        serializer.serialize_bytes(&self.as_bytes())
+        let iban_string = self.iter().collect::<String>();
+        serializer.serialize_str(&iban_string)
     }
 }
 
@@ -172,23 +173,27 @@ impl<'de> Deserialize<'de> for IBAN {
             type Value = IBAN;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "an array of 34 characters")
+                write!(formatter, "a string of exactly 34 characters")
             }
 
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
-                A: serde::de::SeqAccess<'de>,
+                E: serde::de::Error,
             {
-                let mut arr = ['\0'; 34];
-                for i in 0..34 {
-                    arr[i] = seq.next_element()?
-                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                if v.len() != 34 {
+                    return Err(E::invalid_length(v.len(), &self));
                 }
-                Ok(IBAN(arr))
+
+                let mut chars = ['\0'; 34];
+                for (i, ch) in v.chars().enumerate() {
+                    chars[i] = ch;
+                }
+
+                Ok(IBAN(chars))
             }
         }
 
-        deserializer.deserialize_seq(IBANVisitor)
+        deserializer.deserialize_str(IBANVisitor)
     }
 }
 
@@ -307,7 +312,7 @@ mod tests {
         let serialized = rmp_serde::to_vec(&iban).map_err(|_| Error::DevError)?;
 
         let expected: Vec<u8> = vec![
-            0xc4, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
+            0xd9, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
 
@@ -319,16 +324,15 @@ mod tests {
     #[test]
     fn deserialization() -> Result<(), Error> {
         let serialized = vec![
-            0xc4, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
+            0xd9, 0x22, 0x47, 0x42, 0x36, 0x31, 0x42, 0x41, 0x52, 0x43, 0x32, 0x30, 0x30, 0x33, 0x31, 0x38, 0x39, 0x35, 0x31, 0x37, 0x33, 0x36, 0x37, 0x34,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
 
-        let deserialized: Vec<u8> = rmp_serde::from_slice(&serialized).map_err(|_| Error::DevError)?;
-        let deserialized_iban = IBAN::try_from(deserialized)?;
+        let deserialized: IBAN = rmp_serde::from_slice(&serialized).unwrap();
 
         let expected = IBAN::try_from("GB61BARC20031895173674")?;
 
-        assert_eq!(expected, deserialized_iban);
+        assert_eq!(expected, deserialized);
 
         Ok(())
     }

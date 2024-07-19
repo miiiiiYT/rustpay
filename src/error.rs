@@ -6,6 +6,7 @@ pub enum Error {
     WrongIBANSize,
     NoPrivateKey,
     DevError,
+    InvalidKey,
 }
 
 impl Display for Error {
@@ -21,6 +22,7 @@ impl Error {
             Self::WrongIBANSize => "the provided string is too long or too short to be an iban",
             Self::NoPrivateKey => "the entity did not contain a private (signing) key",
             Self::DevError => "error for testing",
+            Self::InvalidKey => "the provided bytes did not represent a valid key",
         }
     }
 }
